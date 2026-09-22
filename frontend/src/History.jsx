@@ -13,7 +13,7 @@ function History() {
     setError('');
 
     axios
-      .get('http://127.0.0.1:8000/history')
+      .get('http://127.0.0.1:8001/history')
       .then((response) => {
         setHistory(response.data);
         setFilteredHistory(response.data);

@@ -30,7 +30,7 @@ function Dashboard() {
 
   useEffect(() => {
     axios
-      .get('http://127.0.0.1:8000/analytics')
+      .get('http://127.0.0.1:8001/analytics')
       .then((res) => {
         setAnalytics(res.data);
       })

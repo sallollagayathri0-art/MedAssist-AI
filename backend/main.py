@@ -1,110 +1,67 @@
-from fastapi import FastAPI, Depends, HTTPException
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import pandas as pd
 import joblib
-import numpy as np
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from passlib.context import CryptContext
-import datetime
+import sqlite3
+import hashlib
+import secrets
+from pathlib import Path
+from datetime import datetime
 
+app = FastAPI(title="MedAssist-AI API")
 
-# --- DATABASE SETUP ---
-DATABASE_URL = "sqlite:///./medassist.db"
-
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False}
-)
-
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
-
-Base = declarative_base()
-
-
-# --- PASSWORD SECURITY ---
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto"
-)
-
-
-# --- USER TABLE ---
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    email = Column(String, unique=True, index=True)
-    password = Column(String)
-
-
-# --- PATIENT HISTORY TABLE ---
-class PatientRecord(Base):
-    __tablename__ = "patient_records"
-
-    id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(
-        DateTime,
-        default=datetime.datetime.utcnow
-    )
-    age = Column(Integer)
-    gender = Column(String)
-    predicted_disease = Column(String)
-    confidence_score = Column(Float)
-    risk_level = Column(String)
-
-
-Base.metadata.create_all(bind=engine)
-
-
-# --- DATABASE DEPENDENCY ---
-def get_db():
-    db = SessionLocal()
-
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-# --- FASTAPI APP ---
-app = FastAPI(
-    title="MedAssist AI API"
-)
-
-
-# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / "models" / "disease_prediction_model.pkl"
+DISEASES_PATH = BASE_DIR / "models" / "label_encoder.pkl"
+DB_PATH = BASE_DIR / "medassist.db"
 
-# --- LOAD ML MODEL ---
-model = joblib.load(
-    "models/disease_prediction_model.pkl"
-)
+model = joblib.load(MODEL_PATH)
+diseases = joblib.load(DISEASES_PATH)
 
-label_encoder = joblib.load(
-    "models/label_encoder.pkl"
-)
+FEATURE_COLUMNS = [
+    "Fever",
+    "Cough",
+    "Fatigue",
+    "Difficulty Breathing",
+    "Age",
+    "Gender",
+    "Blood Pressure",
+    "Cholesterol Level",
+]
+
+print("========== MEDASSIST MODEL DEBUG ==========")
+print("Model file:", MODEL_PATH)
+print("Disease list file:", DISEASES_PATH)
+print("Loaded diseases:", diseases)
+print("Model classes:", getattr(model, "classes_", "Not available"))
+print("===========================================")
 
 
-# --- REQUEST MODELS ---
+class PatientInput(BaseModel):
+    fever: int = Field(ge=0, le=1)
+    cough: int = Field(ge=0, le=1)
+    fatigue: int = Field(ge=0, le=1)
+    difficulty_breathing: int = Field(ge=0, le=1)
+    age: int = Field(ge=0, le=120)
+    gender: int = Field(ge=0, le=1)
+    blood_pressure: int = Field(ge=0, le=2)
+    cholesterol_level: int = Field(ge=0, le=2)
+
 
 class RegisterInput(BaseModel):
-    name: str
-    email: str
-    password: str
+    name: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=6, max_length=128)
 
 
 class LoginInput(BaseModel):
@@ -112,276 +69,402 @@ class LoginInput(BaseModel):
     password: str
 
 
-class SymptomInput(BaseModel):
-    fever: int
-    cough: int
-    fatigue: int
-    difficulty_breathing: int
-    age: int
-    gender: int
-    blood_pressure: int
-    cholesterol_level: int
+def get_connection():
+    return sqlite3.connect(DB_PATH)
 
 
-# --- RISK EVALUATION ---
-def evaluate_risk(data: SymptomInput) -> str:
-
-    risk_points = 0
-
-    if data.difficulty_breathing == 1:
-        risk_points += 3
-
-    if data.fever == 1:
-        risk_points += 1
-
-    if data.blood_pressure == 2:
-        risk_points += 2
-
-    if data.cholesterol_level == 2:
-        risk_points += 1
-
-    if data.age >= 60:
-        risk_points += 1
-
-    if risk_points >= 4:
-        return "High"
-
-    elif risk_points >= 2:
-        return "Medium"
-
-    else:
-        return "Low"
+def hash_password(password: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        100000
+    ).hex()
 
 
-# --- RECOMMENDATIONS ---
-def get_recommendations(
-    disease: str,
-    risk_level: str
-) -> dict:
+def create_tables():
+    with get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS predictions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                predicted_disease TEXT NOT NULL,
+                confidence_score REAL NOT NULL,
+                risk_level TEXT NOT NULL,
+                assessment_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                age INTEGER,
+                gender INTEGER,
+                fever INTEGER DEFAULT 0,
+                cough INTEGER DEFAULT 0,
+                fatigue INTEGER DEFAULT 0,
+                difficulty_breathing INTEGER DEFAULT 0
+            )
+        """)
 
-    advice = {
-        "lifestyle": "Maintain adequate hydration, prioritize 7-8 hours of sleep, and consume a balanced diet.",
-        "precautions": "Monitor vital signs daily and avoid heavy physical exertion if experiencing discomfort.",
-        "consultation": "Routine follow-up with a primary healthcare physician is recommended."
-    }
+        columns = {
+            row[1]
+            for row in conn.execute(
+                "PRAGMA table_info(predictions)"
+            ).fetchall()
+        }
 
-    if risk_level == "High":
+        migrations = {
+            "assessment_date": "TEXT",
+            "age": "INTEGER",
+            "gender": "INTEGER",
+            "fever": "INTEGER DEFAULT 0",
+            "cough": "INTEGER DEFAULT 0",
+            "fatigue": "INTEGER DEFAULT 0",
+            "difficulty_breathing": "INTEGER DEFAULT 0"
+        }
 
-        advice["consultation"] = (
-            "⚠️ Urgent: Consult a healthcare professional "
-            "or emergency department immediately."
-        )
+        for column, column_type in migrations.items():
+            if column not in columns:
+                conn.execute(
+                    f"ALTER TABLE predictions "
+                    f"ADD COLUMN {column} {column_type}"
+                )
 
-        advice["precautions"] = (
-            "Restrict physical activity and track changes "
-            "in breathing or oxygen levels closely."
-        )
+        conn.execute("""
+            UPDATE predictions
+            SET assessment_date = CURRENT_TIMESTAMP
+            WHERE assessment_date IS NULL
+        """)
 
-    elif risk_level == "Medium":
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR,
+                email VARCHAR UNIQUE,
+                password VARCHAR
+            )
+        """)
 
-        advice["consultation"] = (
-            "Schedule an appointment with a general practitioner "
-            "for clinical evaluation."
-        )
 
-    return advice
+create_tables()
 
 
-# --- ROOT ---
 @app.get("/")
-def read_root():
-
+def home():
     return {
-        "status": "success",
-        "message": "MedAssist AI API running!"
+        "message": "MedAssist-AI Backend is running!",
+        "model_file": str(MODEL_PATH),
+        "number_of_diseases": len(diseases),
+        "diseases": diseases
     }
 
 
-# --- REGISTER ---
 @app.post("/register")
-def register_user(
-    data: RegisterInput,
-    db: Session = Depends(get_db)
-):
+def register(data: RegisterInput):
+    name = data.name.strip()
+    email = data.email.strip().lower()
 
-    existing_user = (
-        db.query(User)
-        .filter(User.email == data.email)
-        .first()
-    )
-
-    if existing_user:
-
+    if not name or "@" not in email or "." not in email:
         raise HTTPException(
             status_code=400,
-            detail="Email already registered."
+            detail="Please enter a valid name and email."
         )
 
-    hashed_password = pwd_context.hash(
-        data.password
-    )
-
-    user = User(
-        name=data.name,
-        email=data.email,
-        password=hashed_password
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    return {
-        "message": "Registration successful.",
-        "user_id": user.id,
-        "name": user.name,
-        "email": user.email
-    }
-
-
-# --- LOGIN ---
-@app.post("/login")
-def login_user(
-    data: LoginInput,
-    db: Session = Depends(get_db)
-):
-
-    user = (
-        db.query(User)
-        .filter(User.email == data.email)
-        .first()
-    )
-
-    if not user:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password."
-        )
-
-    password_correct = pwd_context.verify(
+    salt = secrets.token_hex(16)
+    password_hash = salt + ":" + hash_password(
         data.password,
-        user.password
+        salt
     )
 
-    if not password_correct:
+    try:
+        with get_connection() as conn:
+            existing = conn.execute(
+                "SELECT id FROM users WHERE email = ?",
+                (email,)
+            ).fetchone()
 
+            if existing:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This email is already registered."
+                )
+
+            cursor = conn.execute(
+                """
+                INSERT INTO users (name, email, password)
+                VALUES (?, ?, ?)
+                """,
+                (name, email, password_hash)
+            )
+
+            user_id = cursor.lastrowid
+
+        return {
+            "id": user_id,
+            "name": name,
+            "email": email,
+            "message": "Registration successful."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+@app.post("/login")
+def login(data: LoginInput):
+    email = data.email.strip().lower()
+
+    with get_connection() as conn:
+        user = conn.execute(
+            """
+            SELECT id, name, email, password
+            FROM users
+            WHERE email = ?
+            """,
+            (email,)
+        ).fetchone()
+
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password."
+        )
+
+    user_id, name, saved_email, saved_password = user
+
+    if saved_password and ":" in saved_password:
+        salt, saved_hash = saved_password.split(":", 1)
+        entered_hash = hash_password(data.password, salt)
+
+        if not secrets.compare_digest(
+            entered_hash,
+            saved_hash
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password."
+            )
+
+    elif saved_password != data.password:
         raise HTTPException(
             status_code=401,
             detail="Invalid email or password."
         )
 
     return {
-        "message": "Login successful.",
-        "user_id": user.id,
-        "name": user.name,
-        "email": user.email
+        "id": user_id,
+        "name": name,
+        "email": saved_email,
+        "message": "Login successful."
     }
 
 
-# --- DISEASE PREDICTION ---
 @app.post("/predict")
-def predict_disease(
-    data: SymptomInput,
-    db: Session = Depends(get_db)
-):
+def predict(data: PatientInput):
+    try:
+        input_data = pd.DataFrame([{
+            "Fever": data.fever,
+            "Cough": data.cough,
+            "Fatigue": data.fatigue,
+            "Difficulty Breathing": data.difficulty_breathing,
+            "Age": data.age,
+            "Gender": data.gender,
+            "Blood Pressure": data.blood_pressure,
+            "Cholesterol Level": data.cholesterol_level,
+        }], columns=FEATURE_COLUMNS)
 
-    input_features = np.array([[
-        data.fever,
-        data.cough,
-        data.fatigue,
-        data.difficulty_breathing,
-        data.age,
-        data.gender,
-        data.blood_pressure,
-        data.cholesterol_level
-    ]])
+        probabilities = model.predict_proba(input_data)[0]
 
-    prediction = model.predict(
-        input_features
-    )[0]
+        print("\n========== PREDICTION DEBUG ==========")
+        print("Model file:", MODEL_PATH)
+        print("Loaded diseases:", diseases)
+        print("Input data:", input_data.to_dict(orient="records"))
+        print("Probabilities:", probabilities)
 
-    disease_name = label_encoder.inverse_transform(
-        [prediction]
-    )[0]
+        predicted_index = int(probabilities.argmax())
 
-    probabilities = model.predict_proba(
-        input_features
-    )[0]
+        print("Predicted index:", predicted_index)
 
-    confidence = float(
-        np.max(probabilities)
-    )
+        if predicted_index >= len(diseases):
+            raise HTTPException(
+                status_code=500,
+                detail="Model output does not match disease list."
+            )
 
-    risk_level = evaluate_risk(data)
-
-    recommendations = get_recommendations(
-        disease_name,
-        risk_level
-    )
-
-    record = PatientRecord(
-        age=data.age,
-        gender="Male" if data.gender == 1 else "Female",
-        predicted_disease=disease_name,
-        confidence_score=round(
-            confidence * 100,
+        predicted_disease = diseases[predicted_index]
+        confidence = round(
+            float(probabilities[predicted_index]) * 100,
             2
-        ),
-        risk_level=risk_level
-    )
-
-    db.add(record)
-    db.commit()
-    db.refresh(record)
-
-    return {
-        "id": record.id,
-        "predicted_disease": disease_name,
-        "confidence_score": round(
-            confidence * 100,
-            2
-        ),
-        "risk_level": risk_level,
-        "recommendations": recommendations
-    }
-
-
-# --- PATIENT HISTORY ---
-@app.get("/history")
-def get_patient_history(
-    db: Session = Depends(get_db)
-):
-
-    records = (
-        db.query(PatientRecord)
-        .order_by(
-            PatientRecord.timestamp.desc()
         )
-        .limit(10)
-        .all()
-    )
 
-    return records
+        print("Predicted disease:", predicted_disease)
+        print("Confidence:", confidence)
+        print("======================================\n")
+
+        if confidence >= 70:
+            risk_level = "High"
+        elif confidence >= 40:
+            risk_level = "Medium"
+        else:
+            risk_level = "Low"
+
+        assessment_date = datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+        with get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO predictions (
+                    predicted_disease,
+                    confidence_score,
+                    risk_level,
+                    assessment_date,
+                    age,
+                    gender,
+                    fever,
+                    cough,
+                    fatigue,
+                    difficulty_breathing
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    predicted_disease,
+                    confidence,
+                    risk_level,
+                    assessment_date,
+                    data.age,
+                    data.gender,
+                    data.fever,
+                    data.cough,
+                    data.fatigue,
+                    data.difficulty_breathing
+                )
+            )
+
+            prediction_id = cursor.lastrowid
+
+        return {
+            "id": prediction_id,
+            "predicted_disease": predicted_disease,
+            "confidence_score": confidence,
+            "risk_level": risk_level,
+            "assessment_date": assessment_date,
+            "age": data.age,
+            "gender": data.gender,
+            "notice": (
+                "Experimental model output only; "
+                "not a medical diagnosis. "
+                "Confidence and risk labels are not "
+                "clinically validated."
+            )
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 
-# --- ANALYTICS ---
+@app.get("/history")
+def history():
+    try:
+        with get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+
+            rows = conn.execute("""
+                SELECT
+                    id,
+                    assessment_date,
+                    age,
+                    gender,
+                    predicted_disease,
+                    confidence_score,
+                    risk_level
+                FROM predictions
+                ORDER BY id DESC
+            """).fetchall()
+
+        return {
+            "history": [dict(row) for row in rows]
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
 @app.get("/analytics")
-def get_analytics_data():
+def analytics():
+    try:
+        with get_connection() as conn:
+            conn.row_factory = sqlite3.Row
 
-    return {
-        "risk_distribution": {
-            "Low": 45,
-            "Medium": 35,
-            "High": 20
-        },
+            rows = conn.execute("""
+                SELECT
+                    risk_level,
+                    fever,
+                    cough,
+                    fatigue,
+                    difficulty_breathing
+                FROM predictions
+            """).fetchall()
 
-        "top_symptoms": {
-            "Fever": 120,
-            "Cough": 95,
-            "Fatigue": 140,
-            "Difficulty Breathing": 60
-        },
+        risk_distribution = {
+            "Low": 0,
+            "Medium": 0,
+            "High": 0
+        }
 
-        "model_accuracy": 92.4
-    }
+        top_symptoms = {
+            "Fever": 0,
+            "Cough": 0,
+            "Fatigue": 0,
+            "Difficulty Breathing": 0
+        }
+
+        for row in rows:
+            risk = row["risk_level"]
+
+            if risk in risk_distribution:
+                risk_distribution[risk] += 1
+
+            if row["fever"] == 1:
+                top_symptoms["Fever"] += 1
+
+            if row["cough"] == 1:
+                top_symptoms["Cough"] += 1
+
+            if row["fatigue"] == 1:
+                top_symptoms["Fatigue"] += 1
+
+            if row["difficulty_breathing"] == 1:
+                top_symptoms["Difficulty Breathing"] += 1
+
+        return {
+            "risk_distribution": risk_distribution,
+            "top_symptoms": top_symptoms,
+            "total_assessments": len(rows),
+            "model_accuracy": 57.14,
+            "accuracy_note": (
+                "Experimental holdout accuracy from a test "
+                "set of 14 records. This small result is "
+                "unstable and is not clinical validation."
+            ),
+            "note": (
+                "Risk and symptom counts are calculated "
+                "from saved assessments. Risk labels are "
+                "not clinically validated."
+            )
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )

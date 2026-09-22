@@ -31,7 +31,7 @@ function Login({ onLogin }) {
 
       if (isRegister) {
         const response = await axios.post(
-          'http://127.0.0.1:8000/register',
+          'http://127.0.0.1:8001/register',
           {
             name: name.trim(),
             email: email.trim(),
@@ -46,7 +46,7 @@ function Login({ onLogin }) {
         setPassword('');
       } else {
         const response = await axios.post(
-          'http://127.0.0.1:8000/login',
+          'http://127.0.0.1:8001/login',
           {
             email: email.trim(),
             password: password

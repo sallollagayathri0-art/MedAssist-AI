@@ -1,4 +1,4 @@
-\# MedAssist AI
+\# MedAssist-AI
 
 
 
@@ -6,7 +6,7 @@
 
 
 
-MedAssist AI is a Machine Learning-based healthcare application that analyzes patient symptoms, demographics, and vital information to predict a possible health condition and assess health risk.
+MedAssist-AI is an educational machine learning and healthcare web application that analyzes patient symptoms and profile information to predict a possible health condition and display an experimental health risk assessment.
 
 
 
@@ -14,21 +14,27 @@ Developed as part of the Infosys Springboard 7.0 Internship Program.
 
 
 
+> \*\*Disclaimer:\*\* This project is for educational and demonstration purposes only. It is not a medical diagnostic tool.
+
+
+
 \## Key Features
 
 
 
-\- ML-Based Disease Prediction
+\- Machine Learning-Based Disease Prediction
 
-\- Health Risk Assessment
+\- Experimental Health Risk Assessment
 
-\- Medical Recommendations
+\- Medical Recommendations and Precautions
 
 \- PDF Health Summary Report
 
 \- Healthcare Analytics Dashboard
 
-\- Patient Diagnostic History
+\- Patient Assessment History
+
+\- Patient Registration and Login
 
 \- SQLite Database
 
@@ -64,8 +70,6 @@ Developed as part of the Infosys Springboard 7.0 Internship Program.
 
 \- Joblib
 
-\- SQLAlchemy
-
 \- SQLite
 
 
@@ -78,8 +82,6 @@ Developed as part of the Infosys Springboard 7.0 Internship Program.
 
 \- Vite
 
-\- Tailwind CSS
-
 \- Chart.js
 
 \- Axios
@@ -90,7 +92,7 @@ Developed as part of the Infosys Springboard 7.0 Internship Program.
 
 
 
-\### DevOps
+\### DevOps and Tools
 
 
 
@@ -98,69 +100,25 @@ Developed as part of the Infosys Springboard 7.0 Internship Program.
 
 \- Docker Compose
 
-\- Git and GitHub
+\- Git
+
+\- GitHub
 
 
 
-\## System Architecture
+\## Dataset
 
 
 
-User
-
-|
-
-v
-
-React Frontend
-
-|
-
-v
-
-FastAPI Backend
-
-|
-
-v
-
-Machine Learning Model
-
-|
-
-v
-
-Disease Prediction
-
-|
-
-v
-
-Risk Assessment
-
-|
-
-v
-
-Medical Recommendations
-
-|
-
-v
-
-SQLite Database
+The project uses the Disease Symptom and Patient Profile Dataset.
 
 
 
-\## Machine Learning
+The dataset contains symptom, demographic, and health-related information used for model development.
 
 
 
-The system uses patient symptoms, demographics, and vital information to predict a possible health condition.
-
-
-
-Input features include:
+\### Input Features
 
 
 
@@ -182,223 +140,107 @@ Input features include:
 
 
 
-The application displays a model accuracy of approximately 92.4%.
+\### Data Preprocessing
 
 
 
-\## Healthcare Analytics
+\- Loaded the dataset from a CSV file.
 
+\- Removed duplicate records.
 
+\- Checked for missing values.
 
-The dashboard provides:
+\- Encoded symptom and categorical inputs for model processing.
 
 
 
-\- Risk Category Distribution
+The cleaned dataset contains 300 records and 10 columns.
 
-\- Symptom Frequency Analysis
 
-\- Model Accuracy
 
+\## Machine Learning
 
 
-\## Diagnostic Health Report
 
+The application uses a trained machine learning model to predict a possible disease based on the provided patient information.
 
 
-The application generates a health report containing:
 
+The model returns a predicted condition and a confidence score.
 
 
-\- Predicted Condition
 
-\- Prediction Confidence
+\### Experimental Model Evaluation
 
-\- Assessed Health Risk
 
-\- Medical Advice
 
-\- Precautions
+\- Reported holdout accuracy: \*\*57.14%\*\*
 
-\- Lifestyle Guidance
+\- Test set size: \*\*14 records\*\*
 
+\- Evaluation results are limited by the small test set and may be unstable.
 
 
-The report can be downloaded as a PDF.
 
+The reported accuracy is an experimental result, not evidence of clinical performance. Prediction confidence and risk categories have not been clinically validated.
 
 
-\## API Endpoints
 
+\## System Architecture
 
 
-GET /
 
-Backend health check
+```text
 
+&#x20;                 User
 
+&#x20;                  |
 
-POST /predict
+&#x20;                  v
 
-Disease prediction and risk assessment
+&#x20;            React Frontend
 
+&#x20;                  |
 
+&#x20;                  v
 
-GET /history
+&#x20;            FastAPI Backend
 
-Diagnostic history
+&#x20;                  |
 
+&#x20;         +--------+--------+
 
+&#x20;         |                 |
 
-GET /analytics
+&#x20;         v                 v
 
-Healthcare analytics
+&#x20;  ML Prediction       SQLite Database
 
+&#x20;         |
 
+&#x20;         v
 
-\## Local URLs
+&#x20;  Risk Assessment
 
+&#x20;         |
 
+&#x20;         v
 
-Frontend:
+&#x20;Medical Recommendations
 
-http://localhost:5173
+&#x20;         |
 
+&#x20;         v
 
+&#x20;  Results and PDF Report
 
-Backend:
 
-http://localhost:8001
 
+&#x20;      Analytics Dashboard
 
+&#x20;              |
 
-API Documentation:
+&#x20;              v
 
-http://localhost:8001/docs
-
-
-
-\## Docker
-
-
-
-The project uses Docker Compose with two containers.
-
-
-
-Frontend runs on port 5173.
-
-
-
-Backend runs on port 8001.
-
-
-
-To start the complete application:
-
-
-
-docker compose up --build
-
-
-
-\## Project Structure
-
-
-
-MedAssist-AI/
-
-|
-
-|-- backend/
-
-|   |-- models/
-
-|   |-- main.py
-
-|   |-- train.py
-
-|   |-- medassist.db
-
-|   |-- requirements.txt
-
-|   `-- Dockerfile
-
-|
-
-|-- frontend/
-
-|   |-- src/
-
-|   |-- public/
-
-|   |-- package.json
-
-|   `-- Dockerfile
-
-|
-
-|-- Disease\_symptom\_and\_patient\_profile\_dataset.csv
-
-|-- docker-compose.yml
-
-|-- .dockerignore
-
-`-- README.md
-
-
-
-\## Example Output
-
-
-
-Predicted Condition: Influenza
-
-
-
-Prediction Confidence: 32.97%
-
-
-
-Assessed Health Risk: Low Risk
-
-
-
-\## Internship Project
-
-
-
-Program: Infosys Springboard 7.0 Internship
-
-
-
-Project: MedAssist AI
-
-
-
-Domain: Machine Learning, Healthcare and Web Development
-
-
-
-Deployment: Docker and Docker Compose
-
-
-
-\## Disclaimer
-
-
-
-MedAssist AI is an educational and internship demonstration project.
-
-
-
-The predictions generated by this application should not be considered professional medical diagnosis or treatment advice. Users should consult qualified healthcare professionals for actual medical evaluation.
-
-
-
-\## License
-
-
-
-This project is intended for educational purposes as part of the Infosys Springboard internship.
+&#x20;         FastAPI API
 
