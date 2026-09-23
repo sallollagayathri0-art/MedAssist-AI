@@ -1,5 +1,5 @@
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import pandas as pd
@@ -39,15 +39,9 @@ FEATURE_COLUMNS = [
     "Cholesterol Level",
 ]
 
-print("========== MEDASSIST MODEL DEBUG ==========")
-print("Model file:", MODEL_PATH)
-print("Disease list file:", DISEASES_PATH)
-print("Loaded diseases:", diseases)
-print("Model classes:", getattr(model, "classes_", "Not available"))
-print("===========================================")
-
 
 class PatientInput(BaseModel):
+    user_id: int = Field(gt=0)
     fever: int = Field(ge=0, le=1)
     cough: int = Field(ge=0, le=1)
     fatigue: int = Field(ge=0, le=1)
@@ -85,6 +79,15 @@ def hash_password(password: str, salt: str) -> str:
 def create_tables():
     with get_connection() as conn:
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR,
+                email VARCHAR UNIQUE,
+                password VARCHAR
+            )
+        """)
+
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS predictions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 predicted_disease TEXT NOT NULL,
@@ -96,7 +99,8 @@ def create_tables():
                 fever INTEGER DEFAULT 0,
                 cough INTEGER DEFAULT 0,
                 fatigue INTEGER DEFAULT 0,
-                difficulty_breathing INTEGER DEFAULT 0
+                difficulty_breathing INTEGER DEFAULT 0,
+                user_id INTEGER REFERENCES users(id)
             )
         """)
 
@@ -114,7 +118,8 @@ def create_tables():
             "fever": "INTEGER DEFAULT 0",
             "cough": "INTEGER DEFAULT 0",
             "fatigue": "INTEGER DEFAULT 0",
-            "difficulty_breathing": "INTEGER DEFAULT 0"
+            "difficulty_breathing": "INTEGER DEFAULT 0",
+            "user_id": "INTEGER REFERENCES users(id)"
         }
 
         for column, column_type in migrations.items():
@@ -130,17 +135,22 @@ def create_tables():
             WHERE assessment_date IS NULL
         """)
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name VARCHAR,
-                email VARCHAR UNIQUE,
-                password VARCHAR
-            )
-        """)
-
 
 create_tables()
+
+
+def check_user_exists(user_id: int):
+    with get_connection() as conn:
+        user = conn.execute(
+            "SELECT id FROM users WHERE id = ?",
+            (user_id,)
+        ).fetchone()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Patient account not found."
+        )
 
 
 @app.get("/")
@@ -261,6 +271,8 @@ def login(data: LoginInput):
 @app.post("/predict")
 def predict(data: PatientInput):
     try:
+        check_user_exists(data.user_id)
+
         input_data = pd.DataFrame([{
             "Fever": data.fever,
             "Cough": data.cough,
@@ -273,16 +285,7 @@ def predict(data: PatientInput):
         }], columns=FEATURE_COLUMNS)
 
         probabilities = model.predict_proba(input_data)[0]
-
-        print("\n========== PREDICTION DEBUG ==========")
-        print("Model file:", MODEL_PATH)
-        print("Loaded diseases:", diseases)
-        print("Input data:", input_data.to_dict(orient="records"))
-        print("Probabilities:", probabilities)
-
         predicted_index = int(probabilities.argmax())
-
-        print("Predicted index:", predicted_index)
 
         if predicted_index >= len(diseases):
             raise HTTPException(
@@ -295,10 +298,6 @@ def predict(data: PatientInput):
             float(probabilities[predicted_index]) * 100,
             2
         )
-
-        print("Predicted disease:", predicted_disease)
-        print("Confidence:", confidence)
-        print("======================================\n")
 
         if confidence >= 70:
             risk_level = "High"
@@ -324,9 +323,10 @@ def predict(data: PatientInput):
                     fever,
                     cough,
                     fatigue,
-                    difficulty_breathing
+                    difficulty_breathing,
+                    user_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     predicted_disease,
@@ -338,7 +338,8 @@ def predict(data: PatientInput):
                     data.fever,
                     data.cough,
                     data.fatigue,
-                    data.difficulty_breathing
+                    data.difficulty_breathing,
+                    data.user_id
                 )
             )
 
@@ -346,6 +347,7 @@ def predict(data: PatientInput):
 
         return {
             "id": prediction_id,
+            "user_id": data.user_id,
             "predicted_disease": predicted_disease,
             "confidence_score": confidence,
             "risk_level": risk_level,
@@ -370,12 +372,15 @@ def predict(data: PatientInput):
 
 
 @app.get("/history")
-def history():
+def history(user_id: int = Query(gt=0)):
     try:
+        check_user_exists(user_id)
+
         with get_connection() as conn:
             conn.row_factory = sqlite3.Row
 
-            rows = conn.execute("""
+            rows = conn.execute(
+                """
                 SELECT
                     id,
                     assessment_date,
@@ -385,13 +390,18 @@ def history():
                     confidence_score,
                     risk_level
                 FROM predictions
+                WHERE user_id = ?
                 ORDER BY id DESC
-            """).fetchall()
+                """,
+                (user_id,)
+            ).fetchall()
 
         return {
             "history": [dict(row) for row in rows]
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -400,12 +410,15 @@ def history():
 
 
 @app.get("/analytics")
-def analytics():
+def analytics(user_id: int = Query(gt=0)):
     try:
+        check_user_exists(user_id)
+
         with get_connection() as conn:
             conn.row_factory = sqlite3.Row
 
-            rows = conn.execute("""
+            rows = conn.execute(
+                """
                 SELECT
                     risk_level,
                     fever,
@@ -413,7 +426,10 @@ def analytics():
                     fatigue,
                     difficulty_breathing
                 FROM predictions
-            """).fetchall()
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            ).fetchall()
 
         risk_distribution = {
             "Low": 0,
@@ -458,11 +474,13 @@ def analytics():
             ),
             "note": (
                 "Risk and symptom counts are calculated "
-                "from saved assessments. Risk labels are "
-                "not clinically validated."
+                "from this patient's saved assessments. "
+                "Risk labels are not clinically validated."
             )
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,

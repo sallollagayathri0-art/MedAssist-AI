@@ -28,7 +28,7 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       loadHistory();
       loadAnalytics();
     }
@@ -55,18 +55,25 @@ function App() {
   };
 
   const loadHistory = async () => {
+    if (!user?.id) return;
+
     try {
       setHistoryLoading(true);
 
-      const response = await axios.get(`${API_URL}/history`);
+      const response = await axios.get(
+        `${API_URL}/history`,
+        {
+          params: {
+            user_id: user.id
+          }
+        }
+      );
 
-      if (Array.isArray(response.data?.history)) {
-        setHistory(response.data.history);
-      } else if (Array.isArray(response.data)) {
-        setHistory(response.data);
-      } else {
-        setHistory([]);
-      }
+      setHistory(
+        Array.isArray(response.data?.history)
+          ? response.data.history
+          : []
+      );
     } catch (error) {
       console.error('History loading error:', error);
       alert('Unable to load history. Please check that the backend is running.');
@@ -76,8 +83,18 @@ function App() {
   };
 
   const loadAnalytics = async () => {
+    if (!user?.id) return;
+
     try {
-      const response = await axios.get(`${API_URL}/analytics`);
+      const response = await axios.get(
+        `${API_URL}/analytics`,
+        {
+          params: {
+            user_id: user.id
+          }
+        }
+      );
+
       setAnalytics(response.data);
     } catch (error) {
       console.error('Analytics loading error:', error);
@@ -86,6 +103,11 @@ function App() {
 
   const handlePredict = async (e) => {
     e.preventDefault();
+
+    if (!user?.id) {
+      alert('Please log in again before submitting an assessment.');
+      return;
+    }
 
     if (
       !formData.age ||
@@ -101,6 +123,7 @@ function App() {
       setResult(null);
 
       const response = await axios.post(`${API_URL}/predict`, {
+        user_id: user.id,
         fever: formData.fever === 'Yes' ? 1 : 0,
         cough: formData.cough === 'Yes' ? 1 : 0,
         fatigue: formData.fatigue === 'Yes' ? 1 : 0,
@@ -109,15 +132,15 @@ function App() {
         age: Number(formData.age),
         gender: formData.gender === 'Female' ? 0 : 1,
         blood_pressure:
-          formData.blood_pressure === 'Low'
+          formData.blood_pressure === 'Normal'
             ? 0
-            : formData.blood_pressure === 'Normal'
+            : formData.blood_pressure === 'High'
             ? 1
             : 2,
         cholesterol_level:
-          formData.cholesterol_level === 'Low'
+          formData.cholesterol_level === 'Normal'
             ? 0
-            : formData.cholesterol_level === 'Normal'
+            : formData.cholesterol_level === 'High'
             ? 1
             : 2
       });
@@ -133,6 +156,7 @@ function App() {
 
       if (error.response) {
         const detail = error.response.data?.detail;
+
         alert(
           typeof detail === 'string'
             ? detail
@@ -199,38 +223,38 @@ function App() {
       y += 15;
 
       addSection(
+        'Patient',
+        user?.name || 'Patient'
+      );
+
+      addSection(
         'Predicted Condition',
-        result.predicted_disease ||
-          result.predicted_condition ||
-          'Not available'
+        result.predicted_disease || 'Not available'
       );
 
       addSection(
         'Prediction Confidence',
-        `${result.confidence_score ?? result.confidence ?? 0}%`
+        `${result.confidence_score ?? 0}%`
       );
 
       addSection(
         'Assessed Risk Category',
-        result.risk_level || result.risk || 'Unknown'
+        result.risk_level || 'Unknown'
       );
 
       addSection(
         'Medical Advice',
-        result.recommendations?.consultation ||
-          'Consult a qualified healthcare professional for medical advice.'
+        'Consult a qualified healthcare professional for medical advice.'
       );
 
       addSection(
         'Precautions',
-        result.recommendations?.precautions ||
-          'Monitor symptoms and seek medical help if they worsen.'
+        'Monitor symptoms and seek medical help if they worsen.'
       );
 
       addSection(
         'Lifestyle Guidance',
-        result.recommendations?.lifestyle ||
-          'Maintain hydration, adequate sleep, and a balanced diet.'
+        'Maintain hydration, adequate sleep, and a balanced diet.'
       );
 
       if (y > 250) {
@@ -446,9 +470,7 @@ function App() {
                       Predicted Condition
                     </p>
                     <h2 className="text-3xl font-extrabold text-blue-700 mt-2">
-                      {result.predicted_disease ||
-                        result.predicted_condition ||
-                        'Not available'}
+                      {result.predicted_disease || 'Not available'}
                     </h2>
                   </div>
 
@@ -457,7 +479,7 @@ function App() {
                       Prediction Confidence
                     </p>
                     <h2 className="text-3xl font-extrabold text-slate-800 mt-2">
-                      {result.confidence_score ?? result.confidence ?? 0}%
+                      {result.confidence_score ?? 0}%
                     </h2>
                   </div>
 
@@ -466,7 +488,7 @@ function App() {
                       Assessed Risk Category
                     </p>
                     <h2 className="text-3xl font-extrabold text-green-600 mt-2">
-                      {result.risk_level || result.risk || 'Unknown'}
+                      {result.risk_level || 'Unknown'}
                     </h2>
                   </div>
 
@@ -481,8 +503,7 @@ function App() {
                           Medical Advice
                         </h3>
                         <p className="text-slate-600 mt-2">
-                          {result.recommendations?.consultation ||
-                            'Consult a qualified healthcare professional for medical advice.'}
+                          Consult a qualified healthcare professional for medical advice.
                         </p>
                       </div>
 
@@ -491,8 +512,7 @@ function App() {
                           Precautions
                         </h3>
                         <p className="text-slate-600 mt-2">
-                          {result.recommendations?.precautions ||
-                            'Monitor symptoms and seek medical help if they worsen.'}
+                          Monitor symptoms and seek medical help if they worsen.
                         </p>
                       </div>
 
@@ -501,8 +521,7 @@ function App() {
                           Lifestyle Guidance
                         </h3>
                         <p className="text-slate-600 mt-2">
-                          {result.recommendations?.lifestyle ||
-                            'Maintain hydration, adequate sleep, and a balanced diet.'}
+                          Maintain hydration, adequate sleep, and a balanced diet.
                         </p>
                       </div>
                     </div>
@@ -574,22 +593,13 @@ function App() {
                         key={item.id || index}
                         className="border-b border-slate-100 hover:bg-slate-50"
                       >
-                        <td className="p-3">
-                          {item.id || index + 1}
-                        </td>
-
+                        <td className="p-3">{item.id || index + 1}</td>
                         <td className="p-3">
                           {item.assessment_date
-                            ? new Date(
-                                item.assessment_date
-                              ).toLocaleString()
+                            ? new Date(item.assessment_date).toLocaleString()
                             : '—'}
                         </td>
-
-                        <td className="p-3">
-                          {item.age ?? '—'}
-                        </td>
-
+                        <td className="p-3">{item.age ?? '—'}</td>
                         <td className="p-3">
                           {item.gender === 0
                             ? 'Female'
@@ -597,22 +607,14 @@ function App() {
                             ? 'Male'
                             : '—'}
                         </td>
-
                         <td className="p-3 font-semibold">
-                          {item.predicted_disease ||
-                            item.predicted_condition ||
-                            item.disease ||
-                            '—'}
+                          {item.predicted_disease || '—'}
                         </td>
-
                         <td className="p-3">
-                          {item.confidence_score ??
-                            item.confidence ??
-                            '—'}%
+                          {item.confidence_score ?? '—'}%
                         </td>
-
                         <td className="p-3">
-                          {item.risk_level || item.risk || '—'}
+                          {item.risk_level || '—'}
                         </td>
                       </tr>
                     ))}
@@ -630,7 +632,7 @@ function App() {
                 Analytics Dashboard
               </h2>
               <p className="text-slate-500 mt-1">
-                Overview of assessment results and model performance.
+                Overview of your assessment results and model performance.
               </p>
             </div>
 
@@ -667,9 +669,7 @@ function App() {
                         key={item.label}
                         className={`${item.style} rounded-2xl p-5`}
                       >
-                        <p className="text-sm font-semibold">
-                          {item.label}
-                        </p>
+                        <p className="text-sm font-semibold">{item.label}</p>
                         <p className="text-3xl font-extrabold mt-2">
                           {item.value}
                         </p>
@@ -692,19 +692,20 @@ function App() {
                               <span className="font-semibold text-slate-700">
                                 {symptom}
                               </span>
-                              <span className="text-slate-500">
-                                {count}
-                              </span>
+                              <span className="text-slate-500">{count}</span>
                             </div>
 
                             <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-blue-600 rounded-full"
                                 style={{
-                                  width: `${Math.min(
-                                    Number(count) / 2,
-                                    100
-                                  )}%`
+                                  width: `${
+                                    analytics.total_assessments
+                                      ? (Number(count) /
+                                          analytics.total_assessments) *
+                                        100
+                                      : 0
+                                  }%`
                                 }}
                               />
                             </div>
