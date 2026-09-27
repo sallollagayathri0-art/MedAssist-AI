@@ -1,10 +1,9 @@
-
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { jsPDF } from 'jspdf';
 import Login from './Login';
 
-const API_URL = 'http://127.0.0.1:8001';
+const API_URL = 'http://127.0.0.1:8000';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -164,7 +163,7 @@ function App() {
         );
       } else {
         alert(
-          'Could not connect to the backend. Make sure FastAPI is running on port 8001.'
+          'Could not connect to the backend. Make sure FastAPI is running on port 8000.'
         );
       }
     } finally {
@@ -374,6 +373,7 @@ function App() {
               <h2 className="text-2xl font-bold text-slate-800 mb-2">
                 Health Assessment
               </h2>
+
               <p className="text-slate-500 mb-6">
                 Enter your symptoms and basic health information.
               </p>
@@ -456,9 +456,11 @@ function App() {
               {!result ? (
                 <div className="bg-white rounded-3xl shadow-lg border border-slate-200 p-8 h-full flex flex-col justify-center items-center text-center">
                   <div className="text-6xl mb-5">🩺</div>
+
                   <h2 className="text-2xl font-bold text-slate-800">
                     Your Report
                   </h2>
+
                   <p className="text-slate-500 mt-3 max-w-md">
                     Submit the assessment form to generate your experimental prediction.
                   </p>
@@ -469,6 +471,7 @@ function App() {
                     <p className="text-sm font-semibold text-slate-500">
                       Predicted Condition
                     </p>
+
                     <h2 className="text-3xl font-extrabold text-blue-700 mt-2">
                       {result.predicted_disease || 'Not available'}
                     </h2>
@@ -478,6 +481,7 @@ function App() {
                     <p className="text-sm font-semibold text-slate-500">
                       Prediction Confidence
                     </p>
+
                     <h2 className="text-3xl font-extrabold text-slate-800 mt-2">
                       {result.confidence_score ?? 0}%
                     </h2>
@@ -487,6 +491,7 @@ function App() {
                     <p className="text-sm font-semibold text-slate-500">
                       Assessed Risk Category
                     </p>
+
                     <h2 className="text-3xl font-extrabold text-green-600 mt-2">
                       {result.risk_level || 'Unknown'}
                     </h2>
@@ -502,6 +507,7 @@ function App() {
                         <h3 className="font-bold text-slate-700">
                           Medical Advice
                         </h3>
+
                         <p className="text-slate-600 mt-2">
                           Consult a qualified healthcare professional for medical advice.
                         </p>
@@ -511,6 +517,7 @@ function App() {
                         <h3 className="font-bold text-slate-700">
                           Precautions
                         </h3>
+
                         <p className="text-slate-600 mt-2">
                           Monitor symptoms and seek medical help if they worsen.
                         </p>
@@ -520,6 +527,7 @@ function App() {
                         <h3 className="font-bold text-slate-700">
                           Lifestyle Guidance
                         </h3>
+
                         <p className="text-slate-600 mt-2">
                           Maintain hydration, adequate sleep, and a balanced diet.
                         </p>
@@ -550,6 +558,7 @@ function App() {
                 <h2 className="text-2xl font-bold text-slate-800">
                   Patient History
                 </h2>
+
                 <p className="text-slate-500 mt-1">
                   Previous health assessments
                 </p>
@@ -594,12 +603,15 @@ function App() {
                         className="border-b border-slate-100 hover:bg-slate-50"
                       >
                         <td className="p-3">{item.id || index + 1}</td>
+
                         <td className="p-3">
                           {item.assessment_date
                             ? new Date(item.assessment_date).toLocaleString()
                             : '—'}
                         </td>
+
                         <td className="p-3">{item.age ?? '—'}</td>
+
                         <td className="p-3">
                           {item.gender === 0
                             ? 'Female'
@@ -607,12 +619,15 @@ function App() {
                             ? 'Male'
                             : '—'}
                         </td>
+
                         <td className="p-3 font-semibold">
                           {item.predicted_disease || '—'}
                         </td>
+
                         <td className="p-3">
                           {item.confidence_score ?? '—'}%
                         </td>
+
                         <td className="p-3">
                           {item.risk_level || '—'}
                         </td>
@@ -631,6 +646,7 @@ function App() {
               <h2 className="text-2xl font-bold text-slate-800">
                 Analytics Dashboard
               </h2>
+
               <p className="text-slate-500 mt-1">
                 Overview of your assessment results and model performance.
               </p>
@@ -670,6 +686,7 @@ function App() {
                         className={`${item.style} rounded-2xl p-5`}
                       >
                         <p className="text-sm font-semibold">{item.label}</p>
+
                         <p className="text-3xl font-extrabold mt-2">
                           {item.value}
                         </p>
@@ -692,7 +709,10 @@ function App() {
                               <span className="font-semibold text-slate-700">
                                 {symptom}
                               </span>
-                              <span className="text-slate-500">{count}</span>
+
+                              <span className="text-slate-500">
+                                {count}
+                              </span>
                             </div>
 
                             <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
@@ -729,6 +749,7 @@ function App() {
                       <p className="font-semibold text-slate-700">
                         Experimental Model Performance
                       </p>
+
                       <p className="text-sm text-slate-500 mt-1">
                         Reported test accuracy; this model is not clinically validated.
                       </p>
