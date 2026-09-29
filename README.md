@@ -244,3 +244,62 @@ The reported accuracy is an experimental result, not evidence of clinical perfor
 
 &#x20;         FastAPI API
 
+
+
+## Week 1: Disease Prediction and Risk Assessment
+
+### Day 1: Dataset and Preprocessing
+
+* Loaded the Disease Symptoms and Patient Profile Dataset from Kaggle.
+* Removed duplicate records.
+* Checked for missing values.
+* Encoded categorical features.
+
+### Day 2: Disease Prediction
+
+* Developed a Random Forest disease prediction model.
+* Generated disease predictions and probability scores.
+* Saved the trained model.
+
+### Day 3: Risk Assessment
+
+* Implemented disease severity levels.
+* Added patient risk assessment.
+* Generated risk scores and risk levels.
+
+### Day 4: Patient Report API
+
+* Developed a REST API using FastAPI.
+* Created the `/report/{patient_id}` endpoint.
+* Included patient details, disease predictions, severity, and risk assessment.
+
+### Day 5: Testing and Documentation
+
+* Tested the patient report API using Swagger UI.
+* Verified successful and unsuccessful patient report requests.
+* Documented the API testing results.
+
+## Patient Report API Testing
+
+**Endpoint:** `GET /report/{patient_id}`
+
+**Successful request:** `GET /report/1`
+
+**Response:** `200 OK`
+
+**Invalid request:** `GET /report/999`
+
+**Response:** `404 Not Found`
+
+Example error:
+
+```json
+{
+  "detail": "Patient not found"
+}
+```
+
+| Patient ID | HTTP Status   | Result |
+| ---------- | ------------- | ------ |
+| 1          | 200 OK        | Passed |
+| 999        | 404 Not Found | Passed |
