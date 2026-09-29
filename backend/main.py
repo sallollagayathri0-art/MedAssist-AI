@@ -1,520 +1,717 @@
-
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
 import pandas as pd
 import joblib
 import sqlite3
 import hashlib
 import secrets
+import json
+import re
+
 from pathlib import Path
 from datetime import datetime
 
-app = FastAPI(title="MedAssist-AI API")
+
+# ============================================================
+# APP
+# ============================================================
+
+app = FastAPI(
+    title="MedAssist AI",
+    description="AI-Powered Medical Symptom Analysis and Disease Prediction Platform",
+    version="1.0"
+)
+
+
+# ============================================================
+# CORS
+# ============================================================
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
+
+# ============================================================
+# PATHS
+# ============================================================
+
 BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "models" / "disease_prediction_model.pkl"
-DISEASES_PATH = BASE_DIR / "models" / "label_encoder.pkl"
+
+MODEL_PATH = BASE_DIR / "models" / "disease_prediction_model.joblib"
+LABEL_ENCODER_PATH = BASE_DIR / "models" / "disease_label_encoder.joblib"
+FEATURE_COLUMNS_PATH = BASE_DIR / "models" / "disease_feature_columns.joblib"
+
 DB_PATH = BASE_DIR / "medassist.db"
 
-model = joblib.load(MODEL_PATH)
-diseases = joblib.load(DISEASES_PATH)
 
-FEATURE_COLUMNS = [
-    "Fever",
-    "Cough",
-    "Fatigue",
-    "Difficulty Breathing",
-    "Age",
-    "Gender",
-    "Blood Pressure",
-    "Cholesterol Level",
-]
+# ============================================================
+# LOAD MODEL
+# ============================================================
 
+try:
+    model = joblib.load(MODEL_PATH)
+    disease_encoder = joblib.load(LABEL_ENCODER_PATH)
+    FEATURE_COLUMNS = joblib.load(FEATURE_COLUMNS_PATH)
+
+    print("Disease prediction model loaded successfully.")
+    print("Disease label encoder loaded successfully.")
+    print("Number of model features:", len(FEATURE_COLUMNS))
+
+except Exception as e:
+    print("Error loading model:", e)
+
+    model = None
+    disease_encoder = None
+    FEATURE_COLUMNS = []
+
+
+# ============================================================
+# PATIENT INPUT
+# ============================================================
 
 class PatientInput(BaseModel):
-    user_id: int = Field(gt=0)
-    fever: int = Field(ge=0, le=1)
-    cough: int = Field(ge=0, le=1)
-    fatigue: int = Field(ge=0, le=1)
-    difficulty_breathing: int = Field(ge=0, le=1)
-    age: int = Field(ge=0, le=120)
-    gender: int = Field(ge=0, le=1)
-    blood_pressure: int = Field(ge=0, le=2)
-    cholesterol_level: int = Field(ge=0, le=2)
+
+    user_id: int = 1
+
+    fever: int = 0
+    cough: int = 0
+    fatigue: int = 0
+    difficulty_breathing: int = 0
+
+    age: int = Field(default=30, ge=0, le=120)
+
+    gender: int = 0
+    blood_pressure: int = 0
+    cholesterol_level: int = 0
+
+    general_health: int = 3
+    physical_health_days: int = 0
+
+    stroke_history: int = 0
+    asthma_history: int = 0
+    diabetes_history: int = 0
+    copd_history: int = 0
+    kidney_disease: int = 0
+    arthritis: int = 0
+
+    smoker: int = 0
+    exercise: int = 1
+
+    symptoms: dict[str, int] = Field(default_factory=dict)
 
 
-class RegisterInput(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    email: str = Field(min_length=3, max_length=255)
-    password: str = Field(min_length=6, max_length=128)
+# ============================================================
+# DATABASE
+# ============================================================
 
+def get_db():
 
-class LoginInput(BaseModel):
-    email: str
-    password: str
+    connection = sqlite3.connect(DB_PATH)
+    connection.row_factory = sqlite3.Row
 
-
-def get_connection():
-    return sqlite3.connect(DB_PATH)
-
-
-def hash_password(password: str, salt: str) -> str:
-    return hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt.encode("utf-8"),
-        100000
-    ).hex()
+    return connection
 
 
 def create_tables():
-    with get_connection() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name VARCHAR,
-                email VARCHAR UNIQUE,
-                password VARCHAR
-            )
-        """)
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS predictions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                predicted_disease TEXT NOT NULL,
-                confidence_score REAL NOT NULL,
-                risk_level TEXT NOT NULL,
-                assessment_date TEXT DEFAULT CURRENT_TIMESTAMP,
-                age INTEGER,
-                gender INTEGER,
-                fever INTEGER DEFAULT 0,
-                cough INTEGER DEFAULT 0,
-                fatigue INTEGER DEFAULT 0,
-                difficulty_breathing INTEGER DEFAULT 0,
-                user_id INTEGER REFERENCES users(id)
-            )
-        """)
+    connection = get_db()
+    cursor = connection.cursor()
 
-        columns = {
-            row[1]
-            for row in conn.execute(
-                "PRAGMA table_info(predictions)"
-            ).fetchall()
-        }
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
 
-        migrations = {
-            "assessment_date": "TEXT",
-            "age": "INTEGER",
-            "gender": "INTEGER",
-            "fever": "INTEGER DEFAULT 0",
-            "cough": "INTEGER DEFAULT 0",
-            "fatigue": "INTEGER DEFAULT 0",
-            "difficulty_breathing": "INTEGER DEFAULT 0",
-            "user_id": "INTEGER REFERENCES users(id)"
-        }
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            predicted_disease TEXT,
+            confidence_score REAL,
+            risk_level TEXT,
+            assessment_date TEXT,
+            age INTEGER,
+            gender INTEGER,
+            fever INTEGER DEFAULT 0,
+            cough INTEGER DEFAULT 0,
+            fatigue INTEGER DEFAULT 0,
+            difficulty_breathing INTEGER DEFAULT 0,
+            disease_probabilities TEXT,
+            risk_score INTEGER DEFAULT 0,
+            severity TEXT,
+            disease TEXT,
+            probability REAL,
+            top_3_predictions TEXT,
+            symptoms TEXT,
+            created_at TEXT
+        )
+    """)
 
-        for column, column_type in migrations.items():
-            if column not in columns:
-                conn.execute(
-                    f"ALTER TABLE predictions "
-                    f"ADD COLUMN {column} {column_type}"
-                )
-
-        conn.execute("""
-            UPDATE predictions
-            SET assessment_date = CURRENT_TIMESTAMP
-            WHERE assessment_date IS NULL
-        """)
+    connection.commit()
+    connection.close()
 
 
 create_tables()
 
 
-def check_user_exists(user_id: int):
-    with get_connection() as conn:
-        user = conn.execute(
-            "SELECT id FROM users WHERE id = ?",
-            (user_id,)
-        ).fetchone()
+# ============================================================
+# PASSWORD FUNCTIONS
+# ============================================================
 
-    if user is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Patient account not found."
-        )
+def hash_password(password):
 
+    salt = secrets.token_hex(16)
+
+    password_hash = hashlib.sha256(
+        (salt + password).encode()
+    ).hexdigest()
+
+    return salt + ":" + password_hash
+
+
+def verify_password(password, stored_password):
+
+    try:
+        salt, stored_hash = stored_password.split(":")
+
+        password_hash = hashlib.sha256(
+            (salt + password).encode()
+        ).hexdigest()
+
+        return password_hash == stored_hash
+
+    except Exception:
+
+        return False
+
+
+# ============================================================
+# RISK SCORE
+# ============================================================
+
+def calculate_risk_score(patient):
+
+    score = 0
+
+    if patient.general_health >= 4:
+        score += 2
+
+    if patient.physical_health_days >= 14:
+        score += 2
+
+    if patient.stroke_history == 1:
+        score += 3
+
+    if patient.asthma_history == 1:
+        score += 1
+
+    if patient.diabetes_history == 1:
+        score += 2
+
+    if patient.copd_history == 1:
+        score += 2
+
+    if patient.kidney_disease == 1:
+        score += 2
+
+    if patient.arthritis == 1:
+        score += 1
+
+    if patient.smoker == 1:
+        score += 2
+
+    if patient.exercise == 0:
+        score += 1
+
+    if patient.fever == 1:
+        score += 1
+
+    if patient.cough == 1:
+        score += 1
+
+    if patient.fatigue == 1:
+        score += 1
+
+    if patient.difficulty_breathing == 1:
+        score += 2
+
+    if patient.age >= 65:
+        score += 2
+
+    elif patient.age >= 45:
+        score += 1
+
+    if score <= 4:
+        risk_level = "Low"
+
+    elif score <= 7:
+        risk_level = "Medium"
+
+    else:
+        risk_level = "High"
+
+    return score, risk_level
+
+
+# ============================================================
+# SEVERITY
+# ============================================================
+
+def calculate_severity(patient):
+
+    score = 0
+
+    if patient.fever == 1:
+        score += 1
+
+    if patient.cough == 1:
+        score += 1
+
+    if patient.fatigue == 1:
+        score += 1
+
+    if patient.difficulty_breathing == 1:
+        score += 2
+
+    if score <= 1:
+        return "Low"
+
+    elif score <= 3:
+        return "Medium"
+
+    else:
+        return "High"
+
+
+# ============================================================
+# NORMALIZE SYMPTOM NAMES
+# ============================================================
+
+def normalize_symptom_name(name):
+
+    return re.sub(
+        r"[^a-z0-9]",
+        "",
+        str(name).lower()
+    )
+
+
+# ============================================================
+# BUILD MODEL INPUT
+# ============================================================
+
+def build_model_input(patient):
+
+    input_values = {
+        column: 0
+        for column in FEATURE_COLUMNS
+    }
+
+    feature_lookup = {
+        normalize_symptom_name(column): column
+        for column in FEATURE_COLUMNS
+    }
+
+    # Symptoms from the symptoms dictionary
+    for symptom_name, value in patient.symptoms.items():
+
+        normalized = normalize_symptom_name(symptom_name)
+
+        if normalized in feature_lookup:
+
+            real_column = feature_lookup[normalized]
+
+            input_values[real_column] = (
+                1 if int(value) == 1 else 0
+            )
+
+    # Existing frontend symptom fields
+    legacy_symptoms = {
+        "fever": patient.fever,
+        "cough": patient.cough,
+        "fatigue": patient.fatigue,
+        "difficulty breathing": patient.difficulty_breathing
+    }
+
+    for symptom_name, value in legacy_symptoms.items():
+
+        normalized = normalize_symptom_name(symptom_name)
+
+        if normalized in feature_lookup:
+
+            real_column = feature_lookup[normalized]
+
+            input_values[real_column] = (
+                1 if int(value) == 1 else 0
+            )
+
+    return pd.DataFrame(
+        [input_values],
+        columns=FEATURE_COLUMNS
+    )
+
+
+# ============================================================
+# HOME
+# ============================================================
 
 @app.get("/")
 def home():
+
     return {
-        "message": "MedAssist-AI Backend is running!",
-        "model_file": str(MODEL_PATH),
-        "number_of_diseases": len(diseases),
-        "diseases": diseases
+        "message": "MedAssist AI Backend is running!",
+        "status": "success",
+        "model_features": len(FEATURE_COLUMNS)
     }
+
+
+# ============================================================
+# REGISTER
+# ============================================================
+
+class RegisterInput(BaseModel):
+
+    username: str
+    password: str
 
 
 @app.post("/register")
 def register(data: RegisterInput):
-    name = data.name.strip()
-    email = data.email.strip().lower()
 
-    if not name or "@" not in email or "." not in email:
-        raise HTTPException(
-            status_code=400,
-            detail="Please enter a valid name and email."
-        )
-
-    salt = secrets.token_hex(16)
-    password_hash = salt + ":" + hash_password(
-        data.password,
-        salt
-    )
+    connection = get_db()
+    cursor = connection.cursor()
 
     try:
-        with get_connection() as conn:
-            existing = conn.execute(
-                "SELECT id FROM users WHERE email = ?",
-                (email,)
-            ).fetchone()
 
-            if existing:
-                raise HTTPException(
-                    status_code=409,
-                    detail="This email is already registered."
-                )
+        password_hash = hash_password(data.password)
 
-            cursor = conn.execute(
-                """
-                INSERT INTO users (name, email, password)
-                VALUES (?, ?, ?)
-                """,
-                (name, email, password_hash)
+        cursor.execute(
+            """
+            INSERT INTO users
+            (username, password_hash, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (
+                data.username,
+                password_hash,
+                datetime.now().isoformat()
             )
+        )
 
-            user_id = cursor.lastrowid
+        connection.commit()
+
+        user_id = cursor.lastrowid
 
         return {
-            "id": user_id,
-            "name": name,
-            "email": email,
-            "message": "Registration successful."
+            "message": "Registration successful",
+            "user_id": user_id
         }
 
-    except HTTPException:
-        raise
-    except Exception as e:
+    except sqlite3.IntegrityError:
+
         raise HTTPException(
-            status_code=500,
-            detail=str(e)
+            status_code=400,
+            detail="Username already exists"
         )
+
+    finally:
+
+        connection.close()
+
+
+# ============================================================
+# LOGIN
+# ============================================================
+
+class LoginInput(BaseModel):
+
+    username: str
+    password: str
 
 
 @app.post("/login")
 def login(data: LoginInput):
-    email = data.email.strip().lower()
 
-    with get_connection() as conn:
-        user = conn.execute(
-            """
-            SELECT id, name, email, password
-            FROM users
-            WHERE email = ?
-            """,
-            (email,)
-        ).fetchone()
+    connection = get_db()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM users
+        WHERE username = ?
+        """,
+        (data.username,)
+    )
+
+    user = cursor.fetchone()
+
+    connection.close()
 
     if user is None:
+
         raise HTTPException(
             status_code=401,
-            detail="Invalid email or password."
+            detail="Invalid username or password"
         )
 
-    user_id, name, saved_email, saved_password = user
+    if not verify_password(
+        data.password,
+        user["password_hash"]
+    ):
 
-    if saved_password and ":" in saved_password:
-        salt, saved_hash = saved_password.split(":", 1)
-        entered_hash = hash_password(data.password, salt)
-
-        if not secrets.compare_digest(
-            entered_hash,
-            saved_hash
-        ):
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid email or password."
-            )
-
-    elif saved_password != data.password:
         raise HTTPException(
             status_code=401,
-            detail="Invalid email or password."
+            detail="Invalid username or password"
         )
 
     return {
-        "id": user_id,
-        "name": name,
-        "email": saved_email,
-        "message": "Login successful."
+        "message": "Login successful",
+        "user_id": user["id"],
+        "username": user["username"]
     }
 
 
-@app.post("/predict")
-def predict(data: PatientInput):
-    try:
-        check_user_exists(data.user_id)
+# ============================================================
+# PREDICT
+# ============================================================
 
-        input_data = pd.DataFrame([{
-            "Fever": data.fever,
-            "Cough": data.cough,
-            "Fatigue": data.fatigue,
-            "Difficulty Breathing": data.difficulty_breathing,
-            "Age": data.age,
-            "Gender": data.gender,
-            "Blood Pressure": data.blood_pressure,
-            "Cholesterol Level": data.cholesterol_level,
-        }], columns=FEATURE_COLUMNS)
+@app.post("/predict")
+def predict_disease(patient: PatientInput):
+
+    if (
+        model is None
+        or disease_encoder is None
+        or not FEATURE_COLUMNS
+    ):
+
+        raise HTTPException(
+            status_code=500,
+            detail="Prediction model is not loaded"
+        )
+
+    try:
+
+        input_data = build_model_input(patient)
+
+        print("\nInput sent to model:")
+        print("Number of features:", len(input_data.columns))
 
         probabilities = model.predict_proba(input_data)[0]
 
-        classifier_classes = (
-            model.named_steps["classifier"].classes_
+        model_classes = model.classes_
+
+        top_index = probabilities.argmax()
+
+        predicted_class = model_classes[top_index]
+
+        probability = float(probabilities[top_index])
+
+        disease = disease_encoder.inverse_transform(
+            [int(predicted_class)]
+        )[0]
+
+        probability_percentage = round(
+            probability * 100,
+            2
         )
 
-        if len(probabilities) != len(classifier_classes):
-            raise HTTPException(
-                status_code=500,
-                detail="Model probability output is inconsistent."
+        # TOP 3
+        top_indices = probabilities.argsort()[-3:][::-1]
+
+        top_predictions = []
+
+        for index in top_indices:
+
+            class_id = model_classes[index]
+
+            disease_name = disease_encoder.inverse_transform(
+                [int(class_id)]
+            )[0]
+
+            disease_probability = round(
+                float(probabilities[index]) * 100,
+                2
             )
 
-        disease_probabilities = []
-
-        for index, class_id in enumerate(classifier_classes):
-            disease_index = int(class_id)
-
-            if disease_index >= len(diseases):
-                raise HTTPException(
-                    status_code=500,
-                    detail="Model output does not match disease list."
-                )
-
-            disease_probabilities.append({
-                "disease": diseases[disease_index],
-                "probability_score": round(
-                    float(probabilities[index]) * 100,
-                    2
-                )
+            top_predictions.append({
+                "disease": disease_name,
+                "probability": disease_probability
             })
 
-        disease_probabilities.sort(
-            key=lambda item: item["probability_score"],
-            reverse=True
+        # Severity
+        severity = calculate_severity(patient)
+
+        # Risk
+        risk_score, risk_level = calculate_risk_score(patient)
+
+        # Symptoms
+        symptoms = dict(patient.symptoms)
+
+        symptoms.update({
+            "fever": patient.fever,
+            "cough": patient.cough,
+            "fatigue": patient.fatigue,
+            "difficulty_breathing":
+                patient.difficulty_breathing
+        })
+
+        # Save prediction
+        connection = get_db()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO predictions
+            (
+                user_id,
+                predicted_disease,
+                confidence_score,
+                risk_level,
+                assessment_date,
+                age,
+                gender,
+                fever,
+                cough,
+                fatigue,
+                difficulty_breathing,
+                disease_probabilities,
+                risk_score,
+                severity,
+                disease,
+                probability,
+                top_3_predictions,
+                symptoms,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                patient.user_id,
+                disease,
+                probability_percentage,
+                risk_level,
+                datetime.now().isoformat(),
+                patient.age,
+                patient.gender,
+                patient.fever,
+                patient.cough,
+                patient.fatigue,
+                patient.difficulty_breathing,
+                json.dumps(top_predictions),
+                risk_score,
+                severity,
+                disease,
+                probability_percentage,
+                json.dumps(top_predictions),
+                json.dumps(symptoms),
+                datetime.now().isoformat()
+            )
         )
 
-        if not disease_probabilities:
-            raise HTTPException(
-                status_code=500,
-                detail="No disease probability scores were generated."
-            )
+        connection.commit()
 
-        predicted_disease = disease_probabilities[0]["disease"]
-        confidence = disease_probabilities[0]["probability_score"]
+        prediction_id = cursor.lastrowid
 
-        if confidence >= 70:
-            risk_level = "High"
-        elif confidence >= 40:
-            risk_level = "Medium"
-        else:
-            risk_level = "Low"
-
-        assessment_date = datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-
-        with get_connection() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO predictions (
-                    predicted_disease,
-                    confidence_score,
-                    risk_level,
-                    assessment_date,
-                    age,
-                    gender,
-                    fever,
-                    cough,
-                    fatigue,
-                    difficulty_breathing,
-                    user_id
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    predicted_disease,
-                    confidence,
-                    risk_level,
-                    assessment_date,
-                    data.age,
-                    data.gender,
-                    data.fever,
-                    data.cough,
-                    data.fatigue,
-                    data.difficulty_breathing,
-                    data.user_id
-                )
-            )
-
-            prediction_id = cursor.lastrowid
+        connection.close()
 
         return {
-            "id": prediction_id,
-            "user_id": data.user_id,
-            "predicted_disease": predicted_disease,
-            "confidence_score": confidence,
-            "disease_probabilities": disease_probabilities,
+            "prediction_id": prediction_id,
+            "predicted_disease": disease,
+            "probability": probability_percentage,
+            "severity": severity,
+            "risk_score": risk_score,
             "risk_level": risk_level,
-            "assessment_date": assessment_date,
-            "age": data.age,
-            "gender": data.gender,
-            "notice": (
-                "Experimental model output only; "
-                "not a medical diagnosis. "
-                "Scores are model estimates, not "
-                "clinically validated probabilities. "
-                "Risk labels are not clinically validated."
-            )
+            "top_3_predictions": top_predictions
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
+
+        print("Prediction error:", str(e))
+
         raise HTTPException(
             status_code=500,
             detail=str(e)
         )
 
 
-@app.get("/history")
-def history(user_id: int = Query(gt=0)):
-    try:
-        check_user_exists(user_id)
+# ============================================================
+# REPORT
+# ============================================================
 
-        with get_connection() as conn:
-            conn.row_factory = sqlite3.Row
+@app.get("/report/{prediction_id}")
+def get_report(prediction_id: int):
 
-            rows = conn.execute(
-                """
-                SELECT
-                    id,
-                    assessment_date,
-                    age,
-                    gender,
-                    predicted_disease,
-                    confidence_score,
-                    risk_level
-                FROM predictions
-                WHERE user_id = ?
-                ORDER BY id DESC
-                """,
-                (user_id,)
-            ).fetchall()
+    connection = get_db()
+    cursor = connection.cursor()
 
-        return {
-            "history": [dict(row) for row in rows]
-        }
+    cursor.execute(
+        """
+        SELECT *
+        FROM predictions
+        WHERE id = ?
+        """,
+        (prediction_id,)
+    )
 
-    except HTTPException:
-        raise
-    except Exception as e:
+    prediction = cursor.fetchone()
+
+    connection.close()
+
+    if prediction is None:
+
         raise HTTPException(
-            status_code=500,
-            detail=str(e)
+            status_code=404,
+            detail="Prediction report not found"
         )
 
+    report = dict(prediction)
 
-@app.get("/analytics")
-def analytics(user_id: int = Query(gt=0)):
-    try:
-        check_user_exists(user_id)
+    if report.get("top_3_predictions"):
 
-        with get_connection() as conn:
-            conn.row_factory = sqlite3.Row
-
-            rows = conn.execute(
-                """
-                SELECT
-                    risk_level,
-                    fever,
-                    cough,
-                    fatigue,
-                    difficulty_breathing
-                FROM predictions
-                WHERE user_id = ?
-                """,
-                (user_id,)
-            ).fetchall()
-
-        risk_distribution = {
-            "Low": 0,
-            "Medium": 0,
-            "High": 0
-        }
-
-        top_symptoms = {
-            "Fever": 0,
-            "Cough": 0,
-            "Fatigue": 0,
-            "Difficulty Breathing": 0
-        }
-
-        for row in rows:
-            risk = row["risk_level"]
-
-            if risk in risk_distribution:
-                risk_distribution[risk] += 1
-
-            if row["fever"] == 1:
-                top_symptoms["Fever"] += 1
-
-            if row["cough"] == 1:
-                top_symptoms["Cough"] += 1
-
-            if row["fatigue"] == 1:
-                top_symptoms["Fatigue"] += 1
-
-            if row["difficulty_breathing"] == 1:
-                top_symptoms["Difficulty Breathing"] += 1
-
-        return {
-            "risk_distribution": risk_distribution,
-            "top_symptoms": top_symptoms,
-            "total_assessments": len(rows),
-            "model_accuracy": 57.14,
-            "accuracy_note": (
-                "Experimental holdout accuracy from a test "
-                "set of 14 records. This small result is "
-                "unstable and is not clinical validation."
-            ),
-            "note": (
-                "Risk and symptom counts are calculated "
-                "from this patient's saved assessments. "
-                "Risk labels are not clinically validated."
-            )
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
+        report["top_3_predictions"] = json.loads(
+            report["top_3_predictions"]
         )
+
+    else:
+
+        report["top_3_predictions"] = []
+
+    if report.get("symptoms"):
+
+        report["symptoms"] = json.loads(
+            report["symptoms"]
+        )
+
+    else:
+
+        report["symptoms"] = {}
+
+    return {
+        "report_id": report["id"],
+        "user_id": report["user_id"],
+        "predicted_disease": report["predicted_disease"],
+        "probability": report["confidence_score"],
+        "severity": report["severity"],
+        "risk_score": report["risk_score"],
+        "risk_level": report["risk_level"],
+        "age": report["age"],
+        "gender": report["gender"],
+        "symptoms": report["symptoms"],
+        "top_3_predictions": report["top_3_predictions"],
+        "assessment_date": report["assessment_date"]
+    }
