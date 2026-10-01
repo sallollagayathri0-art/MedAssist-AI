@@ -13,10 +13,11 @@ function History() {
     setError('');
 
     axios
-      .get('http://127.0.0.1:8001/history')
+      .get('http://127.0.0.1:8000/history')
       .then((response) => {
-        setHistory(response.data);
-        setFilteredHistory(response.data);
+        const records = response.data.history || [];
+        setHistory(records);
+        setFilteredHistory(records);
         setLoading(false);
       })
       .catch((error) => {
@@ -44,19 +45,11 @@ function History() {
 
   return (
     <div className="w-full flex justify-center">
-
       <div className="w-full max-w-6xl bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
-
-        {/* Header */}
         <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-6 md:px-8 py-6 text-white">
-
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-
             <div>
-              <h2 className="text-2xl font-bold">
-                Patient History
-              </h2>
-
+              <h2 className="text-2xl font-bold">Patient History</h2>
               <p className="text-slate-300 text-sm mt-1">
                 Recent health assessment records
               </p>
@@ -68,18 +61,12 @@ function History() {
             >
               ↻ Refresh
             </button>
-
           </div>
-
         </div>
 
-        {/* Search and Count */}
         <div className="p-5 md:p-6 border-b border-slate-100">
-
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-
             <div className="relative w-full md:max-w-md">
-
               <input
                 type="text"
                 placeholder="Search disease, gender, risk or age..."
@@ -91,26 +78,19 @@ function History() {
               <span className="absolute left-4 top-3.5 text-slate-400">
                 🔍
               </span>
-
             </div>
 
             <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-semibold">
               {filteredHistory.length} Record
               {filteredHistory.length !== 1 ? 's' : ''}
             </div>
-
           </div>
-
         </div>
 
-        {/* Content */}
         <div className="p-4 md:p-6">
-
           {loading && (
-            <div className="text-center py-10">
-              <p className="text-slate-500">
-                Loading patient history...
-              </p>
+            <div className="text-center py-10 text-slate-500">
+              Loading patient history...
             </div>
           )}
 
@@ -122,81 +102,65 @@ function History() {
 
           {!loading && !error && filteredHistory.length === 0 && (
             <div className="text-center py-10">
-
-              <div className="text-4xl mb-3">
-                📋
-              </div>
-
+              <div className="text-4xl mb-3">📋</div>
               <p className="text-slate-500 font-medium">
                 No matching patient records found.
               </p>
-
             </div>
           )}
 
           {!loading && !error && filteredHistory.length > 0 && (
-
             <div className="w-full overflow-x-auto">
-
               <table className="w-full min-w-[950px] border-collapse">
-
                 <thead>
                   <tr className="bg-slate-50">
-
-                    <th className="px-4 py-4 text-left text-xs font-bold text-slate-500 uppercase">
-                      ID
-                    </th>
-
-                    <th className="px-4 py-4 text-left text-xs font-bold text-slate-500 uppercase">
-                      Date & Time
-                    </th>
-
-                    <th className="px-4 py-4 text-left text-xs font-bold text-slate-500 uppercase">
-                      Age
-                    </th>
-
-                    <th className="px-4 py-4 text-left text-xs font-bold text-slate-500 uppercase">
-                      Gender
-                    </th>
-
-                    <th className="px-4 py-4 text-left text-xs font-bold text-slate-500 uppercase">
-                      Predicted Disease
-                    </th>
-
-                    <th className="px-4 py-4 text-left text-xs font-bold text-slate-500 uppercase">
-                      Confidence
-                    </th>
-
-                    <th className="px-4 py-4 text-left text-xs font-bold text-slate-500 uppercase">
-                      Risk
-                    </th>
-
+                    {[
+                      'ID',
+                      'Date & Time',
+                      'Age',
+                      'Gender',
+                      'Predicted Disease',
+                      'Confidence',
+                      'Risk',
+                    ].map((heading) => (
+                      <th
+                        key={heading}
+                        className="px-4 py-4 text-left text-xs font-bold text-slate-500 uppercase"
+                      >
+                        {heading}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
 
                 <tbody>
-
                   {filteredHistory.map((record) => (
-
                     <tr
                       key={record.id}
                       className="border-t border-slate-100 hover:bg-blue-50 transition"
                     >
-
                       <td className="px-4 py-4 text-sm font-bold text-slate-700">
                         #{record.id}
                       </td>
 
                       <td className="px-4 py-4 text-sm text-slate-600">
-                        {new Date(record.timestamp).toLocaleString()}
+                        {record.assessment_date
+                          ? new Date(
+                              record.assessment_date.replace(' ', 'T')
+                            ).toLocaleString()
+                          : 'Not available'}
                       </td>
 
                       <td className="px-4 py-4 text-sm text-slate-600">
-                        {record.age}
+                        {record.age ?? 'N/A'}
                       </td>
 
                       <td className="px-4 py-4 text-sm text-slate-600">
-                        {record.gender}
+                        {record.gender === 0
+                          ? 'Female'
+                          : record.gender === 1
+                          ? 'Male'
+                          : 'N/A'}
                       </td>
 
                       <td className="px-4 py-4 text-sm font-bold text-blue-700">
@@ -208,7 +172,6 @@ function History() {
                       </td>
 
                       <td className="px-4 py-4">
-
                         <span
                           className={`inline-flex px-3 py-1.5 rounded-full text-xs font-bold ${
                             record.risk_level === 'High'
@@ -220,25 +183,15 @@ function History() {
                         >
                           {record.risk_level} Risk
                         </span>
-
                       </td>
-
                     </tr>
-
                   ))}
-
                 </tbody>
-
               </table>
-
             </div>
-
           )}
-
         </div>
-
       </div>
-
     </div>
   );
 }

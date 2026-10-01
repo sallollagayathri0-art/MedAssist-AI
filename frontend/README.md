@@ -1,124 +1,176 @@
-# MedAssist AI – Disease Prediction and Risk Assessment
+# 🩺 MedAssist AI
+### AI-Powered Symptom Analysis & Health Assessment
 
-## Project Overview
+MedAssist AI is an educational healthcare application that uses machine learning to generate experimental disease predictions based on patient symptoms and basic health information. It provides risk categories, general recommendations, patient history, analytics, and downloadable PDF reports.
 
-MedAssist AI is a healthcare application that predicts diseases based on patient symptoms and provides disease severity and risk assessments. It also generates patient reports through a REST API.
+> **Disclaimer:** This application is an experimental educational project. Its predictions and risk categories are not clinically validated and must not replace professional medical advice or diagnosis.
 
-## Technologies Used
+---
 
-* Python
-* FastAPI
-* React
-* Vite
-* Scikit-learn
-* Random Forest Classifier
-* Pandas
-* SQLite
+## 🚀 Features
 
-## Week 1: Disease Prediction and Risk Assessment
+- **User Authentication:** Patient registration and login.
+- **Disease Prediction:** Predicts a possible disease using a Random Forest classifier.
+- **Risk Assessment:** Assigns Low, Medium, or High risk categories.
+- **Recommendations:** Provides general health suggestions and precautions.
+- **Patient History:** Stores and displays previous assessments.
+- **Analytics Dashboard:** Displays assessment statistics and risk distribution.
+- **PDF Reports:** Generates downloadable health assessment reports.
 
-### Day 1: Dataset and Preprocessing
+---
 
-* Collected the Disease Symptoms and Patient Profile Dataset from Kaggle.
-* Loaded and explored the dataset.
-* Removed duplicate records.
-* Checked for missing values.
-* Encoded categorical features for machine learning.
+## 🛠️ Technologies Used
 
-### Day 2: Disease Prediction
+| Technology | Purpose |
+|---|---|
+| Python | Backend and machine learning |
+| FastAPI | REST API |
+| Scikit-learn | Machine learning |
+| Random Forest | Disease classification |
+| Pandas | Dataset processing |
+| SQLite | Database |
+| React | Frontend |
+| Vite | Frontend development |
+| JavaScript | User interface functionality |
+| jsPDF | PDF report generation |
 
-* Developed a disease prediction model using Random Forest.
-* Generated disease predictions and probability scores.
-* Saved the trained model for use in the application.
+---
 
-### Day 3: Risk Assessment
+## 📊 Dataset
 
-* Implemented disease severity levels.
-* Added patient risk assessment.
-* Generated risk scores and risk levels.
+The project uses the Disease Symptoms and Patient Profile Dataset from Kaggle.
 
-### Day 4: Patient Report API
+The dataset includes:
+- Disease
+- Fever
+- Cough
+- Fatigue
+- Difficulty Breathing
+- Age
+- Gender
+- Blood Pressure
+- Cholesterol Level
+- Outcome Variable
 
-* Developed a REST API using FastAPI.
-* Created an endpoint to retrieve patient reports.
-* Included patient details, disease predictions, probabilities, severity, and risk assessment.
+### Data Preprocessing
+- Loaded and explored the dataset.
+- Removed duplicate records.
+- Checked for missing values.
+- Encoded categorical features.
+- Prepared the data for model training.
 
-### Day 5: Testing and Documentation
+---
 
-* Tested the patient report API using Swagger UI.
-* Verified successful and unsuccessful patient report requests.
-* Documented the API and its test results.
+## 🧠 Machine Learning
 
-## Patient Report API
+The application uses a Random Forest classifier to predict diseases from patient information.
 
-**Endpoint:** `GET /report/{patient_id}`
+The model generates:
+- Predicted disease
+- Prediction confidence score
+- Experimental risk category
 
-**Example request:**
-`GET /report/1`
+The predictions are for educational demonstration only and are not clinically validated.
 
-**Successful response:** `200 OK`
+---
 
-The report includes:
+## 📅 Internship Progress
 
-* Patient details
-* Disease predictions
-* Disease probability scores
-* Disease severity
-* Risk score
-* Risk level
+### Week 1: Disease Prediction and Risk Assessment
 
-**Invalid patient ID:** `404 Not Found`
+| Day | Task | Status |
+|---|---|---|
+| Day 1 | Dataset collection and preprocessing | Completed |
+| Day 2 | Disease prediction model | Completed |
+| Day 3 | Risk assessment | Completed |
+| Day 4 | Patient report API | Completed |
+| Day 5 | Testing and documentation | Completed |
 
-Example error:
+### Week 2: Integration and Final Demonstration
 
-```json
-{
-  "detail": "Patient not found"
-}
-```
+| Day | Task | Status |
+|---|---|---|
+| Day 6 | Treatment recommendations | Completed |
+| Day 7 | Health reports and downloads | Completed |
+| Day 8 | Analytics dashboard and API | Completed |
+| Day 9 | Integration and testing | Completed |
+| Day 10 | Final documentation and demonstration | In progress |
 
-## API Testing Results
+---
 
-| Test                     | Result        | Status |
-| ------------------------ | ------------- | ------ |
-| Valid patient ID (1)     | 200 OK        | Passed |
-| Invalid patient ID (999) | 404 Not Found | Passed |
+## 🏗️ Project Architecture
 
-## Project Structure
+The application consists of three main components:
+
+1. **Frontend:** React interface for patient input, assessment results, history, analytics, and reports.
+2. **Backend:** FastAPI services for authentication, predictions, risk assessment, recommendations, and analytics.
+3. **Database:** SQLite storage for user information and assessment history.
+
+### Application Workflow
+
+1. User logs in.
+2. User enters symptoms and health information.
+3. The frontend sends the data to the backend.
+4. The machine learning model generates a prediction.
+5. The backend assigns an experimental risk category.
+6. The application displays general recommendations.
+7. The assessment is saved in the database.
+8. The user can view history, analytics, and download a PDF report.
+
+---
+
+## 🔌 API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/` | API home |
+| POST | `/register` | Register a user |
+| POST | `/login` | User login |
+| POST | `/predict` | Generate a disease prediction |
+| GET | `/history` | Retrieve assessment history |
+| GET | `/analytics` | Retrieve assessment statistics |
+| GET | `/recommendation` | Get general recommendations |
+
+### API Documentation
+
+FastAPI Swagger UI:
+
+`http://127.0.0.1:8000/docs`
+
+---
+
+## 🧪 Testing
+
+The application was tested using Swagger UI and the frontend.
+
+| Feature | Test Result |
+|---|---|
+| User login | Passed |
+| Health assessment | Passed |
+| Disease prediction | Passed |
+| Risk assessment | Passed |
+| Recommendations | Passed |
+| Patient history API | Passed |
+| Analytics API | Passed |
+| PDF report generation | Passed |
+
+These tests verify the tested application functions. They do not establish clinical accuracy.
+
+---
+
+## 📁 Project Structure
 
 ```text
 MedAssist-AI/
 ├── backend/
+│   ├── main.py
+│   ├── recommendation.py
+│   ├── train.py
+│   ├── models/
+│   └── requirements.txt
 ├── frontend/
-├── dataset/
-├── notebooks/
-├── MedAssist_AI_Week1_Disease_Prediction.ipynb
-├── cleaned_dataset.csv
-├── Disease_symptom_and_patient_profile_dataset.csv
+│   ├── src/
+│   ├── public/
+│   └── package.json
+├── PROJECT_DOCUMENTATION.md
 └── README.md
-```
-
-## Running the Project
-
-### Backend
-
-```bash
-cd backend
-uvicorn main:app --reload
-```
-
-Open Swagger UI:
-
-`http://127.0.0.1:8000/docs`
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## Disclaimer
-
-This project is an educational prototype. Its predictions and risk assessments are not a substitute for professional medical advice.
